@@ -7,6 +7,8 @@ cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(wallabmc)
 
+# ESP32-C3 is here until MCUboot is validated (see sysbuild/mcuboot/boards/
+# esp32c3_devkitm.overlay). Remove from this list to enable sysbuild.
 set(NON_SYSBUILD_BOARDS qemu_cortex_m3 esp32c3_devkitm)
 if(BOARD IN_LIST NON_SYSBUILD_BOARDS)
 	if(SYSBUILD)
