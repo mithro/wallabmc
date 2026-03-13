@@ -80,6 +80,10 @@ target_sources_ifdef(CONFIG_JTAG app PRIVATE
 	src/jtag.c
 )
 
+target_sources_ifdef(CONFIG_APP_WIFI app PRIVATE
+	src/wifi.c
+)
+
 target_sources_ifdef(CONFIG_CONSOLE_BRIDGE app PRIVATE
 	src/console_bridge.c
 )
