@@ -423,6 +423,11 @@ config APP_WIFI_PSK_MAX_LEN
 	int "Maximum WiFi PSK length"
 	default 64
 
+config APP_WIFI_PROVISION
+	bool "WiFi provisioning via SoftAP captive portal"
+	depends on APP_WIFI
+	select JSON_LIBRARY
+
 endif # APP_WIFI
 
 source "Kconfig.zephyr"
