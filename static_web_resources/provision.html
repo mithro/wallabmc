@@ -1,0 +1,90 @@
+<!--
+ SPDX-FileCopyrightText: © 2025-2026 Tenstorrent AI ULC
+ SPDX-License-Identifier: Apache-2.0
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WallaBMC WiFi Setup</title>
+<style>
+body { font-family: sans-serif; max-width: 480px; margin: 40px auto; padding: 0 16px; background: #f5f5f5; }
+h1 { text-align: center; color: #333; }
+.card { background: white; border-radius: 8px; padding: 24px; box-shadow: 0 2px 4px rgba(0,0,0,.1); }
+label { display: block; margin-top: 16px; font-weight: bold; color: #555; }
+input[type=text], input[type=password] { width: 100%; padding: 8px; margin-top: 4px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+button { width: 100%; padding: 12px; margin-top: 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+#btn-save { background: #2196F3; color: white; }
+#btn-save:disabled { background: #ccc; }
+#btn-scan { background: #4CAF50; color: white; margin-top: 8px; }
+#status { margin-top: 16px; padding: 12px; border-radius: 4px; display: none; }
+.ok { background: #e8f5e9; color: #2e7d32; }
+.err { background: #ffebee; color: #c62828; }
+#networks { margin-top: 8px; }
+#networks button { width: auto; display: block; margin: 4px 0; padding: 6px 12px; background: #e3f2fd; color: #1565c0; border: 1px solid #90caf9; font-size: 14px; }
+</style>
+</head>
+<body>
+<h1>WallaBMC WiFi Setup</h1>
+<div class="card">
+<button id="btn-scan" onclick="scan()">Scan for Networks</button>
+<div id="networks"></div>
+<form id="form" onsubmit="return save(event)">
+<label for="ssid">WiFi Network (SSID)</label>
+<input type="text" id="ssid" name="ssid" required maxlength="32">
+<label for="psk">Password (PSK)</label>
+<input type="password" id="psk" name="psk" maxlength="64">
+<button type="submit" id="btn-save">Save &amp; Connect</button>
+</form>
+<div id="status"></div>
+</div>
+<script>
+function show(msg, ok) {
+  var s = document.getElementById('status');
+  s.textContent = msg;
+  s.className = ok ? 'ok' : 'err';
+  s.style.display = 'block';
+}
+function scan() {
+  document.getElementById('btn-scan').disabled = true;
+  document.getElementById('btn-scan').textContent = 'Scanning...';
+  fetch('/api/provision/scan').then(function(r) { return r.json(); }).then(function(d) {
+    var n = document.getElementById('networks');
+    n.innerHTML = '';
+    (d.networks || []).forEach(function(net) {
+      var b = document.createElement('button');
+      b.textContent = net.ssid + ' (' + net.rssi + ' dBm)';
+      b.onclick = function() { document.getElementById('ssid').value = net.ssid; };
+      n.appendChild(b);
+    });
+    if (!d.networks || d.networks.length === 0) show('No networks found', false);
+  }).catch(function() { show('Scan failed', false); }).finally(function() {
+    document.getElementById('btn-scan').disabled = false;
+    document.getElementById('btn-scan').textContent = 'Scan for Networks';
+  });
+}
+function save(e) {
+  e.preventDefault();
+  var ssid = document.getElementById('ssid').value;
+  var psk = document.getElementById('psk').value;
+  document.getElementById('btn-save').disabled = true;
+  fetch('/api/provision', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ssid: ssid, psk: psk})
+  }).then(function(r) {
+    if (r.ok) {
+      show('Saved! WallaBMC is rebooting to connect to ' + ssid + '...', true);
+    } else {
+      return r.text().then(function(t) { throw new Error(t); });
+    }
+  }).catch(function(err) {
+    show('Error: ' + err.message, false);
+    document.getElementById('btn-save').disabled = false;
+  });
+  return false;
+}
+</script>
+</body>
+</html>
