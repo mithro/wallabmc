@@ -25,4 +25,18 @@ bool config_host_auto_poweron(void);
 int config_host_auto_poweron_set(bool on);
 const char *config_bmc_admin_password(void);
 bool config_bmc_https_psk(const char **psk, int *psk_len);
+
+#ifdef CONFIG_APP_WIFI
+const char *config_wifi_ssid(void);
+int config_wifi_ssid_set(const char *ssid);
+const char *config_wifi_psk(void);
+int config_wifi_psk_set(const char *psk);
+bool config_wifi_autoconnect(void);
+int config_wifi_autoconnect_set(bool on);
+#else
+static inline const char *config_wifi_ssid(void) { return ""; }
+static inline const char *config_wifi_psk(void) { return ""; }
+static inline bool config_wifi_autoconnect(void) { return false; }
+#endif
+
 #endif
