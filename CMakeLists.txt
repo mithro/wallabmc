@@ -140,12 +140,10 @@ if(CONFIG_APP_CRYPTO)
   endforeach()
 endif()
 
-if(CONFIG_PERSISTENT_STORAGE)
-  if(CONFIG_CODE_DATA_RELOCATION_SRAM AND CONFIG_SOC_FLASH_STM32)
-    include(${ZEPHYR_BASE}/cmake/modules/extensions.cmake)
-    FILE(GLOB flash_driver ${ZEPHYR_BASE}/drivers/flash/flash_stm32*.c)
-    zephyr_code_relocate(FILES ${flash_driver} LOCATION RAM)
-  else()
-    message(FATAL_ERROR "flash storage handling is not defined for this platform")
-  endif()
+if(CONFIG_PERSISTENT_STORAGE AND CONFIG_CODE_DATA_RELOCATION_SRAM AND CONFIG_SOC_FLASH_STM32)
+  # STM32 executes from the same flash it writes (XIP), so the flash
+  # driver must be relocated into RAM to allow safe NVS writes.
+  include(${ZEPHYR_BASE}/cmake/modules/extensions.cmake)
+  FILE(GLOB flash_driver ${ZEPHYR_BASE}/drivers/flash/flash_stm32*.c)
+  zephyr_code_relocate(FILES ${flash_driver} LOCATION RAM)
 endif()
