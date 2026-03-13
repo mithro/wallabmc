@@ -3,7 +3,25 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <zephyr/dt-bindings/pinctrl/esp-pinctrl-common.h>
+#include <zephyr/dt-bindings/pinctrl/esp32c3-pinctrl.h>
+#include <zephyr/dt-bindings/pinctrl/esp32c3-gpio-sigmap.h>
+
 // Espressif ESP32-C3 DevKitM
+
+&pinctrl {
+    uart1_default: uart1_default {
+        group1 {
+            pinmux = <UART1_TX_GPIO10>;
+            output-high;
+        };
+        group2 {
+            pinmux = <UART1_RX_GPIO3>;
+            bias-pull-up;
+        };
+    };
+};
+
 / {
     chosen {
         zephyr,entropy = &trng0;
@@ -79,28 +97,10 @@
     pinctrl-names = "default";
 };
 
-&flash0 {
-    partitions {
-        compatible = "fixed-partitions";
-        #address-cells = <1>;
-        #size-cells = <1>;
-
-        /* Reserve 64KB for future MCUboot */
-        boot_partition: partition@0 {
-            label = "mcuboot";
-            reg = <0x00000000 DT_SIZE_K(64)>;
-        };
-
-        /* 64KB for NVS storage */
-        storage_partition: partition@10000 {
-            label = "storage";
-            reg = <0x00010000 DT_SIZE_K(64)>;
-        };
-
-        /* Application image: remaining space (~3.9MB) */
-        slot0_partition: partition@20000 {
-            label = "image-0";
-            reg = <0x00020000 DT_SIZE_K(3968)>;
-        };
-    };
-};
+/*
+ * Flash partitions: use the default Espressif 4MB layout from
+ * partitions_0x0_default_4M.dtsi which provides:
+ *   boot_partition    @ 0x000000  64KB  (mcuboot)
+ *   slot0_partition   @ 0x020000  1792KB (image-0)
+ *   storage_partition @ 0x3b0000  192KB  (NVS)
+ */

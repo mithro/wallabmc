@@ -111,14 +111,14 @@ static void provision_reboot_work_fn(struct k_work *work)
 static uint8_t provision_post_buf[256];
 
 static int provision_api_handler(struct http_client_ctx *client,
-				 enum http_data_status status,
+				 enum http_transaction_status status,
 				 const struct http_request_ctx *request_ctx,
 				 struct http_response_ctx *response_ctx,
 				 void *user_data)
 {
 	static size_t accumulated;
 
-	if (status == HTTP_SERVER_DATA_ABORTED) {
+	if (status == HTTP_SERVER_TRANSACTION_ABORTED) {
 		accumulated = 0;
 		return 0;
 	}
@@ -134,7 +134,7 @@ static int provision_api_handler(struct http_client_ctx *client,
 		accumulated += to_copy;
 	}
 
-	if (status == HTTP_SERVER_DATA_FINAL) {
+	if (status == HTTP_SERVER_REQUEST_DATA_FINAL) {
 		provision_post_buf[accumulated] = '\0';
 		accumulated = 0;
 
@@ -213,12 +213,12 @@ HTTP_RESOURCE_DEFINE(provision_api_resource, http_service, "/api/provision",
 static uint8_t scan_response_buf[1024];
 
 static int provision_scan_handler(struct http_client_ctx *client,
-				  enum http_data_status status,
+				  enum http_transaction_status status,
 				  const struct http_request_ctx *request_ctx,
 				  struct http_response_ctx *response_ctx,
 				  void *user_data)
 {
-	if (status == HTTP_SERVER_DATA_FINAL) {
+	if (status == HTTP_SERVER_REQUEST_DATA_FINAL) {
 		/* Trigger a new scan if not already running */
 		if (!scan_in_progress) {
 			struct net_if *iface = net_if_get_default();
