@@ -10,6 +10,73 @@
         zephyr,flash = &flash0;
         zephyr,code-partition = &slot0_partition;
     };
+
+    /*
+     * GPIO pin assignments are preliminary — adjust based on actual
+     * test rig wiring (see docs/hardware/rpi-esp32c3.md).
+     *
+     * ESP32-C3 available GPIOs: 0-10, 18-21
+     *   GPIO2  = onboard LED (most DevKitM boards)
+     *   GPIO11-17 = flash/PSRAM (unavailable)
+     */
+
+    leds {
+        compatible = "gpio-leds";
+
+        status_led: status_led {
+            gpios = <&gpio0 2 GPIO_ACTIVE_HIGH>;
+        };
+    };
+
+    jtag {
+        compatible = "gpio-leds";
+
+        jtagtck: jtag_tck {
+            gpios = <&gpio0 4 GPIO_ACTIVE_HIGH>;
+        };
+        jtagtms: jtag_tms {
+            gpios = <&gpio0 5 GPIO_ACTIVE_HIGH>;
+        };
+        jtagtdo: jtag_tdo {
+            gpios = <&gpio0 6     GPIO_PULL_UP>;
+        };
+        jtagtdi: jtag_tdi {
+            gpios = <&gpio0 7 GPIO_ACTIVE_HIGH>;
+        };
+    };
+
+    gpio_keys {
+        compatible = "gpio-keys";
+
+        reset_button: button_0 {
+            label = "Reset";
+            gpios = <&gpio0 9 GPIO_ACTIVE_LOW>;
+            zephyr,code = <INPUT_KEY_0>;
+        };
+    };
+
+    aliases {
+        status-led = &status_led;
+
+        /* Power/reset control — directly drive target GPIOs */
+        power-gpio-1 = &status_led;  /* placeholder until wiring known */
+        reset-gpio = &status_led;    /* placeholder until wiring known */
+
+        jtagtck = &jtagtck;
+        jtagtms = &jtagtms;
+        jtagtdi = &jtagtdi;
+        jtagtdo = &jtagtdo;
+
+        console-bridge-uart = &uart1;
+        reset-button = &reset_button;
+    };
+};
+
+&uart1 {
+    status = "okay";
+    current-speed = <115200>;
+    pinctrl-0 = <&uart1_default>;
+    pinctrl-names = "default";
 };
 
 &flash0 {
