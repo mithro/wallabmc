@@ -324,7 +324,7 @@ config APP_STACK_DEBUG
 	select THREAD_ANALYZER
 	select THREAD_ANALYZER_RUN_UNLOCKED
 config CONSOLE_BRIDGE
-	bool "Console bridge (USART6 to TCP port 22)"
+	bool "Console bridge (UART to TCP port 22)"
 	default y
 	select SERIAL
 	select SERIAL_SUPPORT_ASYNC

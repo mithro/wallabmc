@@ -28,11 +28,12 @@ static struct k_thread console_bridge_thread_data;
 K_THREAD_STACK_DEFINE(uart_tx_thread_stack_area, CONFIG_CONSOLE_BRIDGE_STACK_SIZE);
 static struct k_thread uart_tx_thread_data;
 
-/* USART6 device from device tree */
-#define USART6_NODE DT_NODELABEL(usart6)
-static const struct device *usart6_dev = DEVICE_DT_GET(USART6_NODE);
+/* Console bridge UART device from device tree */
+#define CONSOLE_BRIDGE_UART_NODE DT_ALIAS(console_bridge_uart)
+static const struct device *console_bridge_uart_dev = DEVICE_DT_GET(CONSOLE_BRIDGE_UART_NODE);
 
-BUILD_ASSERT(DT_NODE_EXISTS(USART6_NODE), "usart6 node missing");
+BUILD_ASSERT(DT_NODE_EXISTS(CONSOLE_BRIDGE_UART_NODE),
+	     "console-bridge-uart alias missing from device tree");
 
 /* UART mux select GPIO from device tree */
 #define UARTMUXSEL_NODE DT_ALIAS(uartmuxsel)
@@ -165,7 +166,7 @@ static void handle_client(int client_fd)
 		LOG_WRN("Failed to set TCP_NODELAY: %d", errno);
 	}
 
-	LOG_INF("Client connected to console bridge (USART6 -> TCP port %d)",
+	LOG_INF("Client connected to console bridge (UART -> TCP port %d)",
 		CONSOLE_BRIDGE_PORT);
 
 	/* Set active client */
@@ -174,7 +175,7 @@ static void handle_client(int client_fd)
 	update_uartmuxsel_gpio(true);
 
 	/* Enable UART RX to start receiving data */
-	int ret = uart_rx_enable(usart6_dev, uart_rx_buf, sizeof(uart_rx_buf), UART_RX_TIMEOUT_US);
+	int ret = uart_rx_enable(console_bridge_uart_dev, uart_rx_buf, sizeof(uart_rx_buf), UART_RX_TIMEOUT_US);
 	if (ret < 0) {
 		LOG_ERR("Failed to enable UART RX: %d", ret);
 	}
@@ -201,7 +202,7 @@ static void handle_client(int client_fd)
 		/* Write received data to UART */
 		/* Wait for UART TX to be ready */
 		k_sem_take(&uart_tx_sem, K_FOREVER);
-		int tx_ret = uart_tx(usart6_dev, socket_buf, rc, SYS_FOREVER_US);
+		int tx_ret = uart_tx(console_bridge_uart_dev, socket_buf, rc, SYS_FOREVER_US);
 		if (tx_ret < 0) {
 			LOG_WRN("UART TX error: %d", tx_ret);
 			/* Release semaphore on error */
@@ -210,7 +211,7 @@ static void handle_client(int client_fd)
 	}
 
 	/* Disable UART RX when client disconnects */
-	uart_rx_disable(usart6_dev);
+	uart_rx_disable(console_bridge_uart_dev);
 
 	client_connected = false;
 	active_client_fd = -1;
@@ -287,10 +288,10 @@ int console_bridge_init(void)
 {
 	int ret;
 
-	LOG_INF("Starting console bridge daemon (USART6 -> TCP port %d)...", CONSOLE_BRIDGE_PORT);
+	LOG_INF("Starting console bridge daemon (UART -> TCP port %d)...", CONSOLE_BRIDGE_PORT);
 
-	if (!device_is_ready(usart6_dev)) {
-		LOG_ERR("USART6 device not ready");
+	if (!device_is_ready(console_bridge_uart_dev)) {
+		LOG_ERR("Console bridge UART device not ready");
 		return -1;
 	}
 
@@ -313,7 +314,7 @@ int console_bridge_init(void)
 	LOG_INF("uartmuxsel GPIO initialized");
 #endif
 
-	ret = uart_configure(usart6_dev, &uart_cfg);
+	ret = uart_configure(console_bridge_uart_dev, &uart_cfg);
 
 	if (ret < 0) {
 		LOG_ERR("Configuration is not supported by device or driver,"
@@ -321,13 +322,13 @@ int console_bridge_init(void)
 		return -1;
 	}
 	/* Set up UART callback for async RX */
-	ret = uart_callback_set(usart6_dev, uart_callback, NULL);
+	ret = uart_callback_set(console_bridge_uart_dev, uart_callback, NULL);
 	if (ret < 0) {
 		LOG_ERR("Failed to set UART callback: %d", ret);
 		return ret;
 	}
 
-	LOG_INF("USART6 callback configured for console bridge");
+	LOG_INF("UART callback configured for console bridge");
 
 	/* Start the console bridge daemon thread */
 	k_thread_create(&console_bridge_thread_data, console_bridge_stack_area,
