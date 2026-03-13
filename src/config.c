@@ -603,6 +603,61 @@ static int cmd_config_bmc_password(const struct shell *sh, size_t argc, char **a
 	return 0;
 }
 
+#if defined(CONFIG_APP_WIFI)
+static int cmd_config_wifi_ssid(const struct shell *sh, size_t argc, char **argv)
+{
+	ARG_UNUSED(argc);
+
+	if (!is_boot_finished()) {
+		shell_error(sh, "must wait for boot to finish");
+		return -EAGAIN;
+	}
+
+	config_wifi_ssid_set(argv[1]);
+	shell_info(sh, "WiFi SSID set to %s", config_data.wifi_ssid);
+
+	return 0;
+}
+
+static int cmd_config_wifi_psk(const struct shell *sh, size_t argc, char **argv)
+{
+	ARG_UNUSED(argc);
+
+	if (!is_boot_finished()) {
+		shell_error(sh, "must wait for boot to finish");
+		return -EAGAIN;
+	}
+
+	config_wifi_psk_set(argv[1]);
+	shell_info(sh, "WiFi PSK updated");
+
+	return 0;
+}
+
+static int cmd_config_wifi_autoconnect(const struct shell *sh, size_t argc, char **argv)
+{
+	ARG_UNUSED(argc);
+
+	if (!is_boot_finished()) {
+		shell_error(sh, "must wait for boot to finish");
+		return -EAGAIN;
+	}
+
+	if (!strcmp(argv[1], "enable")) {
+		config_wifi_autoconnect_set(true);
+		shell_info(sh, "WiFi auto-connect enabled");
+	} else if (!strcmp(argv[1], "disable")) {
+		config_wifi_autoconnect_set(false);
+		shell_info(sh, "WiFi auto-connect disabled");
+	} else {
+		shell_error(sh, "wifi autoconnect: unknown argument %s", argv[1]);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+#endif /* CONFIG_APP_WIFI */
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_config_bmc_cmds,
 	SHELL_CMD_ARG(password,		NULL, CMD_HELP_BMC_ADMIN_PASSWORD, cmd_config_bmc_password, 2, 0),
 	SHELL_CMD_ARG(hostname,		NULL, CMD_HELP_BMC_HOSTNAME, cmd_config_bmc_hostname, 2, 0),
@@ -729,59 +784,6 @@ int config_wifi_autoconnect_set(bool on)
 	if (rc < 0) {
 		LOG_ERR("Configuration could not be saved (err=%d)", rc);
 		return rc;
-	}
-
-	return 0;
-}
-
-static int cmd_config_wifi_ssid(const struct shell *sh, size_t argc, char **argv)
-{
-	ARG_UNUSED(argc);
-
-	if (!is_boot_finished()) {
-		shell_error(sh, "must wait for boot to finish");
-		return -EAGAIN;
-	}
-
-	config_wifi_ssid_set(argv[1]);
-	shell_info(sh, "WiFi SSID set to %s", config_data.wifi_ssid);
-
-	return 0;
-}
-
-static int cmd_config_wifi_psk(const struct shell *sh, size_t argc, char **argv)
-{
-	ARG_UNUSED(argc);
-
-	if (!is_boot_finished()) {
-		shell_error(sh, "must wait for boot to finish");
-		return -EAGAIN;
-	}
-
-	config_wifi_psk_set(argv[1]);
-	shell_info(sh, "WiFi PSK updated");
-
-	return 0;
-}
-
-static int cmd_config_wifi_autoconnect(const struct shell *sh, size_t argc, char **argv)
-{
-	ARG_UNUSED(argc);
-
-	if (!is_boot_finished()) {
-		shell_error(sh, "must wait for boot to finish");
-		return -EAGAIN;
-	}
-
-	if (!strcmp(argv[1], "enable")) {
-		config_wifi_autoconnect_set(true);
-		shell_info(sh, "WiFi auto-connect enabled");
-	} else if (!strcmp(argv[1], "disable")) {
-		config_wifi_autoconnect_set(false);
-		shell_info(sh, "WiFi auto-connect disabled");
-	} else {
-		shell_error(sh, "wifi autoconnect: unknown argument %s", argv[1]);
-		return -EINVAL;
 	}
 
 	return 0;
