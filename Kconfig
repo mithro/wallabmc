@@ -406,4 +406,23 @@ config CONSOLE_BRIDGE_PRIORITY
 
 endif
 
+config APP_WIFI
+	bool "WiFi connection management"
+	depends on WIFI
+	select NET_L2_WIFI_MGMT
+	select NET_MGMT_EVENT
+	select NET_MGMT_EVENT_INFO
+
+if APP_WIFI
+
+config APP_WIFI_SSID_MAX_LEN
+	int "Maximum WiFi SSID length"
+	default 32
+
+config APP_WIFI_PSK_MAX_LEN
+	int "Maximum WiFi PSK length"
+	default 64
+
+endif # APP_WIFI
+
 source "Kconfig.zephyr"

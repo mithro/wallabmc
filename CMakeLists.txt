@@ -86,6 +86,10 @@ target_sources_ifdef(CONFIG_APP_CONSOLE_LOGGER app PRIVATE
 	src/console_logger.c
 )
 
+target_sources_ifdef(CONFIG_APP_WIFI app PRIVATE
+	src/wifi.c
+)
+
 target_sources_ifdef(CONFIG_CONSOLE_BRIDGE app PRIVATE
 	src/console_bridge.c
 )
