@@ -46,6 +46,7 @@
         reset-gpio = &red_led;
         status-led = &blue_led;
 
+        console-bridge-uart = &usart6;
         reset-button = &user_button;
     };
 };
