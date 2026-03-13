@@ -41,6 +41,11 @@ enum config_id {
 	CFG_BMC_USE_NTP = 8,			/* uint8_t */
 	CFG_BMC_NTP_SERVER = 9,		/* C string */
 	CFG_HOST_AUTO_POWERON = 10,		/* uint8_t */
+#if defined(CONFIG_APP_WIFI)
+	CFG_WIFI_SSID = 11,			/* C string */
+	CFG_WIFI_PSK = 12,			/* C string */
+	CFG_WIFI_AUTOCONNECT = 13,		/* uint8_t */
+#endif
 	/*
 	 * Add field IDs in increasing order and do not reuse deprecated
 	 * ones. Do not change meaning but add new and deprecate old.
@@ -60,6 +65,11 @@ struct config_data {
 	char bmc_ntp_server[MAX_NTP_SERVER_LEN + 1]; /* NULL terminated */
 	uint32_t bmc_default_ip4_nm;
 	uint32_t bmc_default_ip4_gw;
+#if defined(CONFIG_APP_WIFI)
+	char wifi_ssid[CONFIG_APP_WIFI_SSID_MAX_LEN + 1];
+	char wifi_psk[CONFIG_APP_WIFI_PSK_MAX_LEN + 1];
+	uint8_t wifi_autoconnect;
+#endif
 };
 
 BUILD_ASSERT(strlen(CONFIG_DEFAULT_ADMIN_PASSWORD) <= MAX_PW_LEN);
@@ -635,6 +645,11 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_config_bmc_cmds,
 	SHELL_CMD_ARG(dhcpv4,		NULL, CMD_HELP_BMC_DHCP4, cmd_config_bmc_dhcp4, 2, 0),
 	SHELL_CMD_ARG(ntp,		NULL, CMD_HELP_BMC_NTP, cmd_config_bmc_ntp, 2, 0),
 	SHELL_CMD_ARG(ntp_server,	NULL, CMD_HELP_BMC_NTP_SERVER, cmd_config_bmc_ntp_server, 2, 0),
+#if defined(CONFIG_APP_WIFI)
+	SHELL_CMD_ARG(wifi_ssid,	NULL, "Set WiFi SSID\nUsage: config bmc wifi_ssid <ssid>", cmd_config_wifi_ssid, 2, 0),
+	SHELL_CMD_ARG(wifi_psk,		NULL, "Set WiFi PSK\nUsage: config bmc wifi_psk <psk>", cmd_config_wifi_psk, 2, 0),
+	SHELL_CMD_ARG(wifi_autoconnect,	NULL, "WiFi auto-connect\nUsage: config bmc wifi_autoconnect <enable|disable>", cmd_config_wifi_autoconnect, 2, 0),
+#endif
 	SHELL_SUBCMD_SET_END
 );
 
@@ -688,6 +703,127 @@ static int cmd_config_host_auto_poweron(const struct shell *sh, size_t argc, cha
 	return 0;
 }
 
+#if defined(CONFIG_APP_WIFI)
+const char *config_wifi_ssid(void)
+{
+	return config_data.wifi_ssid;
+}
+
+int config_wifi_ssid_set(const char *ssid)
+{
+	int rc;
+
+	strlcpy(config_data.wifi_ssid, ssid, sizeof(config_data.wifi_ssid));
+	rc = config_write_str(CFG_WIFI_SSID, config_data.wifi_ssid);
+	if (rc < 0) {
+		LOG_ERR("Configuration could not be saved (err=%d)", rc);
+		return rc;
+	}
+
+	return 0;
+}
+
+const char *config_wifi_psk(void)
+{
+	return config_data.wifi_psk;
+}
+
+int config_wifi_psk_set(const char *psk)
+{
+	int rc;
+
+	strlcpy(config_data.wifi_psk, psk, sizeof(config_data.wifi_psk));
+	rc = config_write_str(CFG_WIFI_PSK, config_data.wifi_psk);
+	if (rc < 0) {
+		LOG_ERR("Configuration could not be saved (err=%d)", rc);
+		return rc;
+	}
+
+	return 0;
+}
+
+bool config_wifi_autoconnect(void)
+{
+	return config_data.wifi_autoconnect;
+}
+
+int config_wifi_autoconnect_set(bool on)
+{
+	int rc;
+
+	if (on) {
+		if (config_data.wifi_autoconnect == 1)
+			return 0;
+		config_data.wifi_autoconnect = 1;
+	} else {
+		if (config_data.wifi_autoconnect == 0)
+			return 0;
+		config_data.wifi_autoconnect = 0;
+	}
+
+	rc = config_write(CFG_WIFI_AUTOCONNECT, config_data.wifi_autoconnect);
+	if (rc < 0) {
+		LOG_ERR("Configuration could not be saved (err=%d)", rc);
+		return rc;
+	}
+
+	return 0;
+}
+
+static int cmd_config_wifi_ssid(const struct shell *sh, size_t argc, char **argv)
+{
+	ARG_UNUSED(argc);
+
+	if (!is_boot_finished()) {
+		shell_error(sh, "must wait for boot to finish");
+		return -EAGAIN;
+	}
+
+	config_wifi_ssid_set(argv[1]);
+	shell_info(sh, "WiFi SSID set to %s", config_data.wifi_ssid);
+
+	return 0;
+}
+
+static int cmd_config_wifi_psk(const struct shell *sh, size_t argc, char **argv)
+{
+	ARG_UNUSED(argc);
+
+	if (!is_boot_finished()) {
+		shell_error(sh, "must wait for boot to finish");
+		return -EAGAIN;
+	}
+
+	config_wifi_psk_set(argv[1]);
+	shell_info(sh, "WiFi PSK updated");
+
+	return 0;
+}
+
+static int cmd_config_wifi_autoconnect(const struct shell *sh, size_t argc, char **argv)
+{
+	ARG_UNUSED(argc);
+
+	if (!is_boot_finished()) {
+		shell_error(sh, "must wait for boot to finish");
+		return -EAGAIN;
+	}
+
+	if (!strcmp(argv[1], "enable")) {
+		config_wifi_autoconnect_set(true);
+		shell_info(sh, "WiFi auto-connect enabled");
+	} else if (!strcmp(argv[1], "disable")) {
+		config_wifi_autoconnect_set(false);
+		shell_info(sh, "WiFi auto-connect disabled");
+	} else {
+		shell_error(sh, "wifi autoconnect: unknown argument %s", argv[1]);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+#endif /* CONFIG_APP_WIFI */
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_config_host_cmds,
 	SHELL_CMD_ARG(auto_poweron,	NULL, CMD_HELP_HOST_AUTO_POWERON, cmd_config_host_auto_poweron, 2, 0),
 	SHELL_SUBCMD_SET_END
@@ -707,6 +843,10 @@ static int cmd_config_show(const struct shell *sh, size_t argc, char **argv)
 	shell_print(sh, "BMC use NTP: %d",	config_data.bmc_use_ntp);
 	shell_print(sh, "BMC NTP server: %s",	config_data.bmc_ntp_server);
 	shell_print(sh, "Host auto poweron: %d", config_data.host_auto_poweron);
+#if defined(CONFIG_APP_WIFI)
+	shell_print(sh, "WiFi SSID: %s",	config_data.wifi_ssid);
+	shell_print(sh, "WiFi auto-connect: %d", config_data.wifi_autoconnect);
+#endif
 	shell_print(sh, "---------------------");
 
 	return 0;
@@ -846,6 +986,25 @@ int config_init(void)
 		config_data.host_auto_poweron = 0;
 		config_write(CFG_HOST_AUTO_POWERON, config_data.host_auto_poweron);
 	}
+
+#if defined(CONFIG_APP_WIFI)
+	rc = config_read_str(CFG_WIFI_SSID, config_data.wifi_ssid);
+	if (rc < 0) {
+		config_data.wifi_ssid[0] = '\0';
+		/* Don't write empty default - no SSID means unconfigured */
+	}
+
+	rc = config_read_str(CFG_WIFI_PSK, config_data.wifi_psk);
+	if (rc < 0) {
+		config_data.wifi_psk[0] = '\0';
+	}
+
+	rc = config_read(CFG_WIFI_AUTOCONNECT, config_data.wifi_autoconnect);
+	if (rc < 0) {
+		config_data.wifi_autoconnect = 1; /* default auto-connect enabled */
+		config_write(CFG_WIFI_AUTOCONNECT, config_data.wifi_autoconnect);
+	}
+#endif
 
 	return 0;
 }
