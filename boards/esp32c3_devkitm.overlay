@@ -27,6 +27,8 @@
         zephyr,entropy = &trng0;
         zephyr,flash = &flash0;
         zephyr,code-partition = &slot0_partition;
+        zephyr,console = &usb_serial;
+        zephyr,shell-uart = &usb_serial;
     };
 
     /*
@@ -88,6 +90,10 @@
         console-bridge-uart = &uart1;
         reset-button = &reset_button;
     };
+};
+
+&usb_serial {
+    status = "okay";
 };
 
 &uart1 {
