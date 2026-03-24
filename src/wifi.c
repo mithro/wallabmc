@@ -113,12 +113,13 @@ static void wifi_event_handler(struct net_mgmt_event_callback *cb,
 		const struct wifi_status *status =
 			(const struct wifi_status *)cb->info;
 
-		if (status->status == 0) {
+		if (status && status->status == 0) {
 			LOG_INF("WiFi connected");
 			wifi_connected = true;
 			wifi_connecting = false;
 		} else {
-			LOG_WRN("WiFi connect failed: %d", status->status);
+			LOG_WRN("WiFi connect failed: %d",
+				status ? status->status : -1);
 			wifi_connected = false;
 			wifi_connecting = false;
 
