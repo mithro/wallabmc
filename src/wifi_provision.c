@@ -18,6 +18,7 @@
 LOG_MODULE_REGISTER(wifi_provision, LOG_LEVEL_INF);
 
 #include <zephyr/net/net_if.h>
+#include <zephyr/net/net_ip.h>
 #include <zephyr/net/wifi_mgmt.h>
 #include <zephyr/net/http/server.h>
 #include <zephyr/net/http/service.h>
@@ -309,7 +310,28 @@ static int start_softap(void)
 		return ret;
 	}
 
-	LOG_INF("SoftAP started. Connect and visit http://192.168.4.1/provision");
+	/*
+	 * Assign a static IP to the SoftAP interface. Without this, the
+	 * ESP32-C3 has no IP and the HTTP server is unreachable. Clients
+	 * connecting to the SoftAP must use a static IP in the same subnet
+	 * (no DHCP server on the ESP32-C3).
+	 */
+	struct in_addr addr, netmask;
+
+	net_addr_pton(AF_INET, "192.168.4.1", &addr);
+	net_addr_pton(AF_INET, "255.255.255.0", &netmask);
+
+	struct net_if_addr *ifaddr = net_if_ipv4_addr_add(iface, &addr,
+							  NET_ADDR_MANUAL, 0);
+	if (!ifaddr) {
+		LOG_ERR("Failed to add SoftAP IP address");
+		return -ENOMEM;
+	}
+
+	net_if_ipv4_set_netmask_by_addr(iface, &addr, &netmask);
+
+	LOG_INF("SoftAP started: %s, IP 192.168.4.1/24", ssid);
+	LOG_INF("Connect and visit http://192.168.4.1/provision");
 
 	return 0;
 }

@@ -63,7 +63,7 @@ def read_rpi_gpio(chip, pin):
     """Read a single RPi GPIO pin value."""
     request = chip.request_lines(
         consumer="gpio-test",
-        config={pin: gpiod.LineSettings(direction=gpiod.Direction.INPUT)},
+        config={pin: gpiod.LineSettings(direction=gpiod.line.Direction.INPUT)},
     )
     val = request.get_value(pin)
     request.release()

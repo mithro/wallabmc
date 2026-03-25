@@ -212,13 +212,49 @@ static int cmd_wifi_disconnect(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+static bool wifi_is_connected(void)
+{
+	struct net_if *iface = net_if_get_default();
+
+	if (!iface) {
+		return false;
+	}
+
+	/* Check actual interface carrier state rather than relying
+	 * solely on the event callback, which may not fire on all
+	 * WiFi drivers.
+	 */
+	if (net_if_is_carrier_ok(iface) && net_if_is_up(iface)) {
+		/* Also check if we have an IPv4 address */
+		struct net_if_config *cfg = net_if_get_config(iface);
+
+		if (cfg) {
+			for (int i = 0; i < NET_IF_MAX_IPV4_ADDR; i++) {
+				if (cfg->ip.ipv4->unicast[i].ipv4.is_used &&
+				    cfg->ip.ipv4->unicast[i].ipv4.address.in_addr.s_addr != 0) {
+					wifi_connected = true;
+					wifi_connecting = false;
+					return true;
+				}
+			}
+		}
+
+		/* Carrier up but no IP yet — still connecting */
+		return false;
+	}
+
+	return false;
+}
+
 static int cmd_wifi_status(const struct shell *sh, size_t argc, char **argv)
 {
 	ARG_UNUSED(argc);
 	ARG_UNUSED(argv);
 
+	bool connected = wifi_is_connected();
+
 	shell_print(sh, "WiFi status: %s",
-		    wifi_connected ? "connected" :
+		    connected ? "connected" :
 		    (wifi_connecting ? "connecting" : "disconnected"));
 	shell_print(sh, "Configured SSID: %s", config_wifi_ssid());
 	shell_print(sh, "Auto-connect: %s",
