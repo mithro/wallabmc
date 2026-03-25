@@ -12,16 +12,22 @@ general purpose I/O testing.
 
 ## Hardware
 
-- **RPi 4** (`rpi4-esp`): 8GB, Debian trixie, PoE powered
+- **RPi 4** (`rpi4-esp`): Model B Rev 1.4, 8GB, Debian trixie, PoE powered
   - SSH: `tim@ipv4.eth0.rpi4-esp.iot.welland.mithis.com`
-  - ESP32-C3 USB serial: `/dev/ttyESP32C3` (udev symlink)
-  - WiFi AP for testing: `wlanE` (RTL8188CUS USB adapter)
+  - eth0: `10.1.90.206` (static DHCP, VLAN 90), switch port GSM7252PS 1/0/27
+  - wlan0: `10.1.90.207` (ansells-iot WiFi, VLAN 90)
+  - ESP32-C3 USB serial: `/dev/ttyESP32C3` (udev symlink, USB path `1-1.2.4`)
+  - WiFi AP for testing: `wlanE` (RTL8188CUS USB adapter, unmanaged by NM)
+  - esptool: `/opt/esptool/bin/esptool`
+  - Full hardware inventory: `~/local/rpi4-esp.md`
 - **ESP32-C3**: Tenstar Robot ESP32-C3 Super Mini
   - Chip: ESP32-C3 (QFN32) rev v0.4, single core RISC-V 160MHz
   - Flash: 4MB embedded (XMC)
   - WiFi MAC: `44:1b:f6:2e:a9:a4`
-  - USB: built-in USB-Serial/JTAG (`303a:1001`)
+  - USB: built-in USB-Serial/JTAG (`303a:1001`, serial `44:1B:F6:2E:A9:A4`)
   - Exposed pins: 5V, GND, 3V3, GPIO 0-10, 20, 21
+  - USB hub: Genesys Logic (ganged power — shares with wlanE, nRF52840, ESP32-CAM)
+  - Power cycle: `sudo uhubctl -l 1-1 -p 2 -a cycle -d 3` (affects all hub devices)
 
 ### ESP32-C3 Super Mini Pinout
 
