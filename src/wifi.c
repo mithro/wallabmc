@@ -52,7 +52,8 @@ int wifi_connect(const char *ssid, const char *psk)
 		params.security = WIFI_SECURITY_TYPE_PSK;
 	}
 
-	LOG_INF("Connecting to WiFi SSID: %s", ssid);
+	LOG_INF("Connecting to WiFi SSID: %s (security=%d, psk_len=%zu)",
+		ssid, params.security, psk ? strlen(psk) : 0);
 	wifi_connecting = true;
 
 	int ret = net_mgmt(NET_REQUEST_WIFI_CONNECT, iface, &params,
@@ -143,24 +144,21 @@ static void wifi_event_handler(struct net_mgmt_event_callback *cb,
 		break;
 	}
 	case NET_EVENT_WIFI_DISCONNECT_RESULT: {
-		if (wifi_connected) {
-			LOG_INF("WiFi disconnected");
-			wifi_connected = false;
-			wifi_connecting = false;
+		LOG_INF("WiFi disconnected (was_connected=%d)", wifi_connected);
 
-			/*
-			 * Stop DHCP on the now-dead WiFi interface so the
-			 * client does not keep retransmitting into the void.
-			 * DHCP will be restarted by the connect handler when
-			 * WiFi reconnects.
-			 */
+		if (wifi_connected)
 			net_dhcpv4_stop(iface);
 
-			/* Schedule reconnect attempt */
-			if (config_wifi_autoconnect()) {
-				k_work_reschedule(&wifi_reconnect_work,
-						  K_MSEC(WIFI_RECONNECT_DELAY_MS));
-			}
+		wifi_connected = false;
+		wifi_connecting = false;
+
+		/* Schedule reconnect attempt — also after failed connects
+		 * so the device does not stay stuck if the first boot-time
+		 * association attempt fails.
+		 */
+		if (config_wifi_autoconnect()) {
+			k_work_reschedule(&wifi_reconnect_work,
+					  K_MSEC(WIFI_RECONNECT_DELAY_MS));
 		}
 		break;
 	}
