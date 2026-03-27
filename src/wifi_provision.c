@@ -51,7 +51,7 @@ static bool scan_in_progress;
 static struct net_mgmt_event_callback scan_cb;
 
 static void scan_result_handler(struct net_mgmt_event_callback *cb,
-				uint32_t mgmt_event, struct net_if *iface)
+				uint64_t mgmt_event, struct net_if *iface)
 {
 	if (mgmt_event == NET_EVENT_WIFI_SCAN_RESULT) {
 		const struct wifi_scan_result *entry =

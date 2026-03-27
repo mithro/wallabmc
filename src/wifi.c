@@ -11,6 +11,7 @@ LOG_MODULE_REGISTER(wifi, LOG_LEVEL_INF);
 #include <zephyr/net/net_if.h>
 #include <zephyr/net/net_event.h>
 #include <zephyr/net/wifi_mgmt.h>
+#include <zephyr/net/dhcpv4.h>
 #include <zephyr/shell/shell.h>
 #include <string.h>
 
@@ -106,7 +107,7 @@ static void wifi_auto_reconnect_work_handler(struct k_work *work)
 }
 
 static void wifi_event_handler(struct net_mgmt_event_callback *cb,
-				uint32_t mgmt_event, struct net_if *iface)
+				uint64_t mgmt_event, struct net_if *iface)
 {
 	switch (mgmt_event) {
 	case NET_EVENT_WIFI_CONNECT_RESULT: {
@@ -117,6 +118,16 @@ static void wifi_event_handler(struct net_mgmt_event_callback *cb,
 			LOG_INF("WiFi connected");
 			wifi_connected = true;
 			wifi_connecting = false;
+
+			/*
+			 * Restart DHCP so a fresh DISCOVER goes out now that
+			 * the WiFi link is up.  net_config_init_app() may have
+			 * already started DHCP before association completed,
+			 * leaving the client in a stale selecting state with
+			 * an inflated back-off timer.  A restart resets the
+			 * state machine and gets an address promptly.
+			 */
+			net_dhcpv4_restart(iface);
 		} else {
 			LOG_WRN("WiFi connect failed: %d",
 				status ? status->status : -1);
@@ -137,6 +148,14 @@ static void wifi_event_handler(struct net_mgmt_event_callback *cb,
 			wifi_connected = false;
 			wifi_connecting = false;
 
+			/*
+			 * Stop DHCP on the now-dead WiFi interface so the
+			 * client does not keep retransmitting into the void.
+			 * DHCP will be restarted by the connect handler when
+			 * WiFi reconnects.
+			 */
+			net_dhcpv4_stop(iface);
+
 			/* Schedule reconnect attempt */
 			if (config_wifi_autoconnect()) {
 				k_work_reschedule(&wifi_reconnect_work,
@@ -151,7 +170,7 @@ static void wifi_event_handler(struct net_mgmt_event_callback *cb,
 }
 
 static void ipv4_event_handler(struct net_mgmt_event_callback *cb,
-				uint32_t mgmt_event, struct net_if *iface)
+				uint64_t mgmt_event, struct net_if *iface)
 {
 	switch (mgmt_event) {
 	case NET_EVENT_IPV4_ADDR_ADD:
