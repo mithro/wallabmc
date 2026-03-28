@@ -104,7 +104,7 @@
         jtagtdi = &jtagtdi;
         jtagtdo = &jtagtdo;
 
-        console-bridge-uart = &uart1;
+        host-console-uart = &uart1;
         reset-button = &reset_button;
     };
 };

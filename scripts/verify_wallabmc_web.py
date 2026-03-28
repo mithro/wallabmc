@@ -299,13 +299,14 @@ def test_network(bmc_ip):
 
     # Poll for TCP port 80
     def tcp_open(port):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(2)
         try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(2)
             sock.connect((bmc_ip, port))
             sock.close()
             return True
         except Exception:
+            sock.close()
             return False
 
     for port, name in [(HTTP_PORT, "HTTP"), (CONSOLE_BRIDGE_PORT, "console bridge"),
