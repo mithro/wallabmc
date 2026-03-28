@@ -129,10 +129,23 @@ static int validate_and_set_headers(struct http_client_ctx *client,
 		return -1;
 	}
 
+	/*
+	 * Force Connection: close on every response.  The static
+	 * in_buffer is shared across connections — keeping a connection
+	 * alive can bleed data from the next request into the current
+	 * handler's buffer, corrupting JSON payloads.
+	 */
 	if (client->method == HTTP_GET) {
 		static const struct http_header headers[] = {
 			{ .name = "content-type", .value = "application/json" },
 			{ .name = "cache-control", .value = "no-cache" },
+			{ .name = "connection", .value = "close" },
+		};
+		ctx->headers = headers;
+		ctx->header_count = ARRAY_SIZE(headers);
+	} else {
+		static const struct http_header headers[] = {
+			{ .name = "connection", .value = "close" },
 		};
 		ctx->headers = headers;
 		ctx->header_count = ARRAY_SIZE(headers);
@@ -216,7 +229,7 @@ static int redfish_handler(struct http_client_ctx *client,
 	}
 
 	if (client->method == HTTP_PATCH || client->method == HTTP_POST) {
-		/* Accumulate requests into the in_buffer, until the final request. */
+		/* Accumulate request body into in_buffer across chunks. */
 		if (request_ctx->data && request_ctx->data_len > 0) {
 			if (in_buffer_len + request_ctx->data_len < sizeof(in_buffer)) {
 				memcpy(in_buffer + in_buffer_len, request_ctx->data, request_ctx->data_len);
@@ -292,7 +305,10 @@ static int name##_handler(struct http_client_ctx *client,				\
 static const struct http_resource_detail_dynamic name##_detail = {			\
 	.common = {									\
 		.type = HTTP_RESOURCE_TYPE_DYNAMIC,					\
-		.bitmask_of_supported_http_methods = -1U,				\
+		.bitmask_of_supported_http_methods =					\
+			((get_handler) ? BIT(HTTP_GET) : 0) |				\
+			((patch_handler) ? BIT(HTTP_PATCH) : 0) |			\
+			((post_handler) ? BIT(HTTP_POST) : 0),				\
 	},										\
 	.cb = name##_handler,								\
 	.user_data = NULL,								\
@@ -1322,8 +1338,9 @@ static int system_reset_post_handler(char *in_buf, size_t in_buf_len)
 
 	memset(&payload, 0, sizeof(payload));
 	ret = json_obj_parse(in_buf, in_buf_len, reset_descr, ARRAY_SIZE(reset_descr), &payload);
-	if (ret < 0) {
-		LOG_ERR("ComputerSystem.Reset: Bad JSON (err=%d)", ret);
+	if (ret <= 0 || !payload.reset_type) {
+		LOG_ERR("ComputerSystem.Reset: Bad JSON (ret=%d, len=%zu, buf='%s')",
+			ret, in_buf_len, in_buf ? in_buf : "(null)");
 		return HTTP_400_BAD_REQUEST;
 	}
 

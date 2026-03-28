@@ -133,7 +133,11 @@ def poll_until(predicate, timeout=POLL_TIMEOUT, interval=POLL_INTERVAL):
 
 
 def http_get(url, auth=None, timeout=5):
-    """GET request, returns (status, headers, body_bytes)."""
+    """GET request, returns (status, headers, body_bytes).
+
+    Uses a fresh TCP connection for each request (no keepalive) to
+    avoid the Zephyr HTTP server's shared-buffer data bleed issue.
+    """
     req = urllib.request.Request(url)
     if auth:
         cred = base64.b64encode(f"{auth[0]}:{auth[1]}".encode()).decode()
@@ -731,9 +735,24 @@ def test_jtag_port(bmc_ip):
     section("JTAG Remote Bitbang")
 
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(3)
-        sock.connect((bmc_ip, JTAG_PORT))
+        # Poll for connection — JTAG server is single-client and may
+        # need time to become available after previous connections.
+        sock = None
+        def try_connect():
+            nonlocal sock
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(2)
+                s.connect((bmc_ip, JTAG_PORT))
+                sock = s
+                return True
+            except Exception:
+                return False
+
+        if not poll_until(try_connect):
+            log_fail("JTAG TCP connect", "timed out")
+            return
+
         log_pass("JTAG TCP connect", f"{bmc_ip}:{JTAG_PORT}")
 
         sock.sendall(b"R")
