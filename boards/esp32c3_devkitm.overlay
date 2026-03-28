@@ -46,6 +46,18 @@
         status_led: status_led {
             gpios = <&gpio0 2 GPIO_ACTIVE_HIGH>;
         };
+
+        /* Power and reset control — directly drive target GPIOs.
+         * GPIO1  (RPi GPIO20, pin 38) = power control
+         * GPIO0  (RPi GPIO21, pin 40) = reset control
+         * Avoids strapping pins (GPIO2, GPIO8, GPIO9).
+         */
+        power_out: power_out {
+            gpios = <&gpio0 1 GPIO_ACTIVE_HIGH>;
+        };
+        reset_out: reset_out {
+            gpios = <&gpio0 0 GPIO_ACTIVE_HIGH>;
+        };
     };
 
     jtag {
@@ -79,8 +91,8 @@
         status-led = &status_led;
 
         /* Power/reset control — directly drive target GPIOs */
-        power-gpio-1 = &status_led;  /* placeholder until wiring known */
-        reset-gpio = &status_led;    /* placeholder until wiring known */
+        power-gpio-1 = &power_out;   /* GPIO1 -> RPi GPIO20 */
+        reset-gpio = &reset_out;     /* GPIO0 -> RPi GPIO21 */
 
         jtagtck = &jtagtck;
         jtagtms = &jtagtms;

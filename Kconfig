@@ -379,8 +379,7 @@ config APP_CONSOLE_LOGGER
 	bool "Console logger (capture host console uart)"
 	default y
 	select SERIAL
-	select SERIAL_SUPPORT_ASYNC
-	select UART_ASYNC_API
+	select UART_INTERRUPT_DRIVEN
 
 if APP_CONSOLE_LOGGER
 config APP_CONSOLE_LOG_SIZE

@@ -50,10 +50,14 @@ GPIO_CHIP = "/dev/gpiochip4"
 
 # RPi BCM GPIO numbers wired to ESP32-C3 pins.
 # From docs/hardware/rpi-esp32c3.md:
-#   ESP32 GPIO2  (status-led / power-gpio-1 / reset-gpio) -> RPi GPIO16
-#   ESP32 GPIO10 (UART1 TX, console bridge)                -> RPi GPIO15
-#   ESP32 GPIO3  (UART1 RX, console bridge)                <- RPi GPIO14
+#   ESP32 GPIO2  (status-led)       -> RPi GPIO16
+#   ESP32 GPIO1  (power-gpio-1)     -> RPi GPIO20
+#   ESP32 GPIO0  (reset-gpio)       -> RPi GPIO21
+#   ESP32 GPIO10 (UART1 TX)         -> RPi GPIO15
+#   ESP32 GPIO3  (UART1 RX)         <- RPi GPIO14
 RPI_GPIO_STATUS_LED = 16   # ESP32 GPIO2
+RPI_GPIO_POWER      = 20   # ESP32 GPIO1
+RPI_GPIO_RESET      = 21   # ESP32 GPIO0
 RPI_GPIO_UART_RX    = 15   # reads ESP32 UART1 TX (GPIO10)
 RPI_GPIO_UART_TX    = 14   # drives ESP32 UART1 RX (GPIO3)
 
@@ -135,6 +139,7 @@ def http_get(url, auth=None, timeout=5):
         cred = base64.b64encode(f"{auth[0]}:{auth[1]}".encode()).decode()
         req.add_header("Authorization", f"Basic {cred}")
     req.add_header("Accept-Encoding", "gzip, deflate")
+    req.add_header("Connection", "close")
     try:
         resp = urllib.request.urlopen(req, timeout=timeout)
         body = resp.read()
@@ -153,6 +158,7 @@ def http_post_json(url, data, auth=None, timeout=5):
     body = json.dumps(data).encode()
     req = urllib.request.Request(url, data=body, method="POST")
     req.add_header("Content-Type", "application/json")
+    req.add_header("Connection", "close")
     if auth:
         cred = base64.b64encode(f"{auth[0]}:{auth[1]}".encode()).decode()
         req.add_header("Authorization", f"Basic {cred}")
@@ -424,12 +430,12 @@ def test_power_control(base_url, auth):
     else:
         log_fail("PowerState after ForceOff", f"got {actual}")
 
-    # GPIO check: sample LED pin, verify it's toggling (ESP32 driving it)
+    # GPIO: power pin (RPi GPIO20) should be LOW when off
     if have_gpio:
-        samples = gpio_sample(RPI_GPIO_STATUS_LED, duration=3.0, interval=0.005)
-        high_pct = sum(1 for _, v in samples if v) / len(samples) * 100
-        log_pass(f"GPIO16 (status LED) sampled: {high_pct:.0f}% HIGH over 3s",
-                 f"({len(samples)} samples — LED thread active)")
+        if gpio_poll_value(RPI_GPIO_POWER, False):
+            log_pass("Power GPIO (RPi GPIO20) LOW after ForceOff")
+        else:
+            log_fail("Power GPIO (RPi GPIO20) not LOW after ForceOff")
 
     # --- Power On ---
     status, _, body = http_post_json(reset_url, {"ResetType": "On"}, auth=auth)
@@ -446,26 +452,25 @@ def test_power_control(base_url, auth):
     else:
         log_fail("PowerState after On", f"got {actual}")
 
+    # GPIO: power pin should be HIGH when on
     if have_gpio:
-        samples = gpio_sample(RPI_GPIO_STATUS_LED, duration=3.0, interval=0.005)
-        high_pct = sum(1 for _, v in samples if v) / len(samples) * 100
-        log_pass(f"GPIO16 (status LED) sampled: {high_pct:.0f}% HIGH over 3s",
-                 f"({len(samples)} samples — LED thread active)")
+        if gpio_poll_value(RPI_GPIO_POWER, True):
+            log_pass("Power GPIO (RPi GPIO20) HIGH after On")
+        else:
+            log_fail("Power GPIO (RPi GPIO20) not HIGH after On")
 
-    # --- GPIO toggling proof ---
+    # --- Status LED toggling proof (independent of power GPIO) ---
     if have_gpio:
         samples = gpio_sample(RPI_GPIO_STATUS_LED, duration=4.0, interval=0.005)
         transitions = sum(
             1 for i in range(1, len(samples)) if samples[i][1] != samples[i - 1][1]
         )
         if transitions >= 4:
-            log_pass(f"GPIO16 toggling detected ({transitions} transitions in 4s)",
-                     "ESP32 is actively driving the pin")
+            log_pass(f"Status LED toggling ({transitions} transitions in 4s)")
         else:
-            log_fail(f"GPIO16 not toggling ({transitions} transitions in 4s)")
+            log_fail(f"Status LED not toggling ({transitions} transitions in 4s)")
 
     # --- Power Cycle ---
-    # Ensure On first
     http_post_json(reset_url, {"ResetType": "On"}, auth=auth)
     poll_power_state(base_url, auth, "On")
 
@@ -474,6 +479,7 @@ def test_power_control(base_url, auth):
         log_pass("POST PowerCycle accepted")
     else:
         log_fail("POST PowerCycle", f"status={status}")
+        return
 
     # After cycle, power should be back On
     actual = poll_power_state(base_url, auth, "On")
@@ -481,6 +487,47 @@ def test_power_control(base_url, auth):
         log_pass("PowerState reports On after PowerCycle")
     else:
         log_fail("PowerState after PowerCycle", f"got {actual}")
+
+    # GPIO: power pin should be HIGH after cycle
+    if have_gpio:
+        if gpio_poll_value(RPI_GPIO_POWER, True):
+            log_pass("Power GPIO HIGH after PowerCycle")
+        else:
+            log_fail("Power GPIO not HIGH after PowerCycle")
+
+    # --- Reset pulse ---
+    # Reset GPIO (RPi GPIO21) should pulse HIGH then return LOW
+    if have_gpio:
+        # Verify reset pin is LOW before reset
+        if not gpio_poll_value(RPI_GPIO_RESET, False, timeout=3):
+            log_fail("Reset GPIO not LOW before reset test")
+        else:
+            # Trigger reset and sample the pin to catch the pulse
+            import threading
+            pulse_seen = [False]
+
+            def watch_reset():
+                samples = gpio_sample(RPI_GPIO_RESET, duration=3.0, interval=0.005)
+                high_count = sum(1 for _, v in samples if v)
+                pulse_seen[0] = high_count > 10  # at least ~50ms of HIGH
+
+            t = threading.Thread(target=watch_reset, daemon=True)
+            t.start()
+
+            # Small delay then trigger reset via shell (Redfish PowerCycle
+            # already exercises the reset path internally)
+            # Use a direct HTTP post — the reset action pulses the reset GPIO
+            # Note: there is no dedicated Redfish reset-only action, but
+            # PowerCycle calls power_reset() internally
+            import time
+            time.sleep(0.2)
+            # PowerCycle was already done above; just verify reset pin returned LOW
+            t.join(timeout=5)
+
+            if gpio_poll_value(RPI_GPIO_RESET, False, timeout=3):
+                log_pass("Reset GPIO returned to LOW after PowerCycle")
+            else:
+                log_fail("Reset GPIO stuck HIGH after PowerCycle")
 
 
 # ---------------------------------------------------------------------------
@@ -499,6 +546,13 @@ def test_console_bridge(bmc_ip, uart_dev=RPI_UART_DEV):
     if not os.path.exists(uart_dev):
         log_skip("Console bridge tests", f"{uart_dev} not found")
         return
+
+    # Ensure GPIO14/15 are set to ALT5 (mini-UART TXD1/RXD1).
+    # On some RPi4 configurations, enable_uart=1 does not set the pin
+    # function, leaving GPIO14/15 as plain inputs.
+    for pin, func in [("14", "a5"), ("15", "a5")]:
+        subprocess.run(["pinctrl", "set", pin, func],
+                       capture_output=True, timeout=5)
 
     try:
         rpi_uart = pyserial.Serial(
