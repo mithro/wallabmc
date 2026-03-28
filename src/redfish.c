@@ -1330,17 +1330,46 @@ static const struct json_obj_descr reset_descr[] = {
 				  reset_type, JSON_TOK_STRING)
 };
 
+/*
+ * Find the start of the last JSON object in buf.
+ *
+ * The Zephyr HTTP server can prepend stale data from a prior request
+ * to the current request's body (shared static buffer + keepalive).
+ * The actual payload is always the LAST complete {...} in the buffer.
+ */
+static char *find_last_json_object(char *buf, size_t len)
+{
+	char *last = NULL;
+
+	for (size_t i = 0; i < len; i++) {
+		if (buf[i] == '{')
+			last = &buf[i];
+	}
+	return last;
+}
+
 /* POST /redfish/v1/Systems/system/Actions/ComputerSystem.Reset */
 static int system_reset_post_handler(char *in_buf, size_t in_buf_len)
 {
 	struct redfish_reset_payload payload;
 	int ret;
+	char *json_start;
+
+	/* Skip any stale data prepended by the HTTP framework */
+	json_start = find_last_json_object(in_buf, in_buf_len);
+	if (!json_start) {
+		LOG_ERR("ComputerSystem.Reset: No JSON object in buffer "
+			"(len=%zu)", in_buf_len);
+		return HTTP_400_BAD_REQUEST;
+	}
 
 	memset(&payload, 0, sizeof(payload));
-	ret = json_obj_parse(in_buf, in_buf_len, reset_descr, ARRAY_SIZE(reset_descr), &payload);
+	ret = json_obj_parse(json_start,
+			     in_buf_len - (json_start - in_buf),
+			     reset_descr, ARRAY_SIZE(reset_descr), &payload);
 	if (ret <= 0 || !payload.reset_type) {
-		LOG_ERR("ComputerSystem.Reset: Bad JSON (ret=%d, len=%zu, buf='%s')",
-			ret, in_buf_len, in_buf ? in_buf : "(null)");
+		LOG_ERR("ComputerSystem.Reset: Bad JSON (ret=%d, buf='%s')",
+			ret, json_start);
 		return HTTP_400_BAD_REQUEST;
 	}
 
