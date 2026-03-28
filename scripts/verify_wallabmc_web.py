@@ -570,14 +570,23 @@ def test_console_bridge(bmc_ip, uart_dev=RPI_UART_DEV):
         log_skip("Console bridge tests", f"cannot open {uart_dev}: {e}")
         return
 
-    # Poll for TCP connection to console bridge
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.settimeout(5)
-    try:
-        sock.connect((bmc_ip, CONSOLE_BRIDGE_PORT))
-        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-    except Exception as e:
-        log_fail("Console bridge TCP connect", str(e))
+    # Poll for TCP connection — single-client server needs time after
+    # the network connectivity test closed its probe connection.
+    sock = None
+    def try_bridge_connect():
+        nonlocal sock
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(2)
+            s.connect((bmc_ip, CONSOLE_BRIDGE_PORT))
+            s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            sock = s
+            return True
+        except Exception:
+            return False
+
+    if not poll_until(try_bridge_connect):
+        log_fail("Console bridge TCP connect", "timed out")
         rpi_uart.close()
         return
 

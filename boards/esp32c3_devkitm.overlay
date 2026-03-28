@@ -50,7 +50,12 @@
         /* Power and reset control — directly drive target GPIOs.
          * GPIO1  (RPi GPIO20, pin 38) = power control
          * GPIO0  (RPi GPIO21, pin 40) = reset control
-         * Avoids strapping pins (GPIO2, GPIO8, GPIO9).
+         *
+         * Note: GPIO0 is a strapping pin on ESP32-C3 (selects boot
+         * mode).  It is safe to drive as output after boot, but the
+         * RPi side (GPIO21) MUST be high-impedance (input, no pull)
+         * during ESP32-C3 power-on/reset to avoid forcing download
+         * mode.  The verify_wallabmc_web.py test reads it as INPUT.
          */
         power_out: power_out {
             gpios = <&gpio0 1 GPIO_ACTIVE_HIGH>;

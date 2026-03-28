@@ -245,7 +245,7 @@ static bool wifi_is_connected(void)
 		/* Also check if we have an IPv4 address */
 		struct net_if_config *cfg = net_if_get_config(iface);
 
-		if (cfg) {
+		if (cfg && cfg->ip.ipv4) {
 			for (int i = 0; i < NET_IF_MAX_IPV4_ADDR; i++) {
 				if (cfg->ip.ipv4->unicast[i].ipv4.is_used &&
 				    cfg->ip.ipv4->unicast[i].ipv4.address.in_addr.s_addr != 0) {

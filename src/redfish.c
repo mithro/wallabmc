@@ -1336,6 +1336,12 @@ static const struct json_obj_descr reset_descr[] = {
  * The Zephyr HTTP server can prepend stale data from a prior request
  * to the current request's body (shared static buffer + keepalive).
  * The actual payload is always the LAST complete {...} in the buffer.
+ *
+ * Limitation: finds the last '{', not the last top-level object.
+ * This works for all current Redfish POST payloads (flat, single-level
+ * JSON objects with no nested braces).  If a payload with nested
+ * objects is added, this must be replaced with a proper brace-matching
+ * scanner.
  */
 static char *find_last_json_object(char *buf, size_t len)
 {
