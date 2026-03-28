@@ -78,6 +78,9 @@ jobs:
           # Update modules (fetches Zephyr kernel, HAL_STM32, etc.)
           west update --path-cache /repo-cache/zephyrproject --narrow -o=--depth=10000 -o=--tags
 
+          # Fetch binary blobs required by ESP32 HAL
+          west blobs fetch hal_espressif
+
       - name: Build WallaBMC (sysbuild boards)
         if: ${{ !contains(fromJson('["qemu_cortex_m3","esp32c3_devkitm"]'), matrix.board) }}
         working-directory: workspace

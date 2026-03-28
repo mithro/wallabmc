@@ -297,23 +297,24 @@ def test_network(bmc_ip):
         log_fail("Ping", "no response within timeout")
         return False
 
-    # Poll for TCP port 80
+    # Only probe HTTP port — console bridge (22) and JTAG (7777) are
+    # single-client servers; probing them steals the client slot and
+    # blocks the actual tests.  Those tests poll for connection themselves.
     def tcp_open(port):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(2)
         try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(2)
             sock.connect((bmc_ip, port))
             sock.close()
             return True
         except Exception:
+            sock.close()
             return False
 
-    for port, name in [(HTTP_PORT, "HTTP"), (CONSOLE_BRIDGE_PORT, "console bridge"),
-                       (JTAG_PORT, "JTAG")]:
-        if poll_until(lambda p=port: tcp_open(p)):
-            log_pass(f"TCP port {port} ({name}) open")
-        else:
-            log_fail(f"TCP port {port} ({name})", "not reachable")
+    if poll_until(lambda: tcp_open(HTTP_PORT)):
+        log_pass(f"TCP port {HTTP_PORT} (HTTP) open")
+    else:
+        log_fail(f"TCP port {HTTP_PORT} (HTTP)", "not reachable")
 
     return True
 
@@ -592,8 +593,9 @@ def test_console_bridge(bmc_ip, uart_dev=RPI_UART_DEV):
 
     log_pass("Console bridge TCP connect", f"{bmc_ip}:{CONSOLE_BRIDGE_PORT}")
 
-    def drain_sock():
-        """Drain any pending data from socket."""
+    def drain():
+        """Drain pending data from both socket and UART."""
+        rpi_uart.reset_input_buffer()
         sock.setblocking(False)
         try:
             while sock.recv(4096):
@@ -603,106 +605,13 @@ def test_console_bridge(bmc_ip, uart_dev=RPI_UART_DEV):
         sock.setblocking(True)
         sock.settimeout(3)
 
-    def drain_uart():
-        """Drain any pending data from UART."""
-        rpi_uart.reset_input_buffer()
+    drain()
 
-    def drain_both():
-        drain_sock()
-        drain_uart()
-
-    drain_both()
-
-    # --- Test 1: TCP -> UART (ESP32 TX -> RPi RX) ---
-    test_pattern = b"WALLABMC_TX_TEST_" + bytes(range(0x20, 0x7f))
-    try:
-        sock.sendall(test_pattern)
-
-        # Poll for data on RPi UART
-        received = b""
-        def got_tx_data():
-            nonlocal received
-            chunk = rpi_uart.read(rpi_uart.in_waiting or 1)
-            if chunk:
-                received += chunk
-            return test_pattern in received
-
-        if poll_until(got_tx_data, timeout=5):
-            log_pass("TCP -> UART (ESP32 TX -> RPi RX)",
-                     f"sent {len(test_pattern)}B, received {len(received)}B")
-        elif len(received) > 0:
-            log_fail("TCP -> UART partial",
-                     f"sent {len(test_pattern)}B, got {len(received)}B")
-        else:
-            log_fail("TCP -> UART no data received on RPi UART")
-    except Exception as e:
-        log_fail("TCP -> UART", str(e))
-
-    drain_both()
-
-    # --- Test 2: UART -> TCP (RPi TX -> ESP32 RX) ---
-    test_pattern_2 = b"WALLABMC_RX_TEST_" + bytes(range(0x20, 0x7f))
-    try:
-        rpi_uart.write(test_pattern_2)
-        rpi_uart.flush()
-
-        # Poll for data on TCP socket
-        received = b""
-        def got_rx_data():
-            nonlocal received
-            try:
-                sock.setblocking(False)
-                chunk = sock.recv(4096)
-                sock.setblocking(True)
-                sock.settimeout(3)
-                if chunk:
-                    received += chunk
-            except (BlockingIOError, OSError):
-                sock.setblocking(True)
-                sock.settimeout(3)
-            return test_pattern_2 in received
-
-        if poll_until(got_rx_data, timeout=5):
-            log_pass("UART -> TCP (RPi TX -> ESP32 RX)",
-                     f"sent {len(test_pattern_2)}B, received {len(received)}B")
-        elif len(received) > 0:
-            log_fail("UART -> TCP partial",
-                     f"sent {len(test_pattern_2)}B, got {len(received)}B")
-        else:
-            log_fail("UART -> TCP no data received on TCP socket")
-    except Exception as e:
-        log_fail("UART -> TCP", str(e))
-
-    drain_both()
-
-    # --- Test 3: Byte-level accuracy (TCP -> UART) ---
-    # Send all printable ASCII at once, verify received correctly
     all_bytes = bytes(range(0x20, 0x7f))
-    try:
-        sock.sendall(all_bytes)
-        received = b""
-        def got_all_tx():
-            nonlocal received
-            chunk = rpi_uart.read(rpi_uart.in_waiting or 1)
-            if chunk:
-                received += chunk
-            return len(received) >= len(all_bytes)
 
-        poll_until(got_all_tx, timeout=5)
-        # Compare what we got
-        correct = sum(1 for i in range(min(len(all_bytes), len(received)))
-                      if all_bytes[i] == received[i])
-        if correct == len(all_bytes):
-            log_pass(f"Byte-level TCP->UART: {correct}/{len(all_bytes)} bytes correct")
-        else:
-            log_fail(f"Byte-level TCP->UART: {correct}/{len(all_bytes)} bytes correct",
-                     f"received {len(received)} bytes")
-    except Exception as e:
-        log_fail("Byte-level TCP->UART", str(e))
-
-    drain_both()
-
-    # --- Test 4: Byte-level accuracy (UART -> TCP) ---
+    # --- Test 1: Byte-level accuracy (UART -> TCP) ---
+    # Run this FIRST on a fresh connection — the console logger's ring
+    # buffer is empty so there's no stale data to corrupt the read.
     try:
         rpi_uart.write(all_bytes)
         rpi_uart.flush()
@@ -731,6 +640,88 @@ def test_console_bridge(bmc_ip, uart_dev=RPI_UART_DEV):
                      f"received {len(received)} bytes")
     except Exception as e:
         log_fail("Byte-level UART->TCP", str(e))
+
+    # --- Test 2: Byte-level accuracy (TCP -> UART) ---
+    drain()
+    try:
+        sock.sendall(all_bytes)
+        received = b""
+        def got_all_tx():
+            nonlocal received
+            chunk = rpi_uart.read(rpi_uart.in_waiting or 1)
+            if chunk:
+                received += chunk
+            return len(received) >= len(all_bytes)
+
+        poll_until(got_all_tx, timeout=5)
+        correct = sum(1 for i in range(min(len(all_bytes), len(received)))
+                      if all_bytes[i] == received[i])
+        if correct == len(all_bytes):
+            log_pass(f"Byte-level TCP->UART: {correct}/{len(all_bytes)} bytes correct")
+        else:
+            log_fail(f"Byte-level TCP->UART: {correct}/{len(all_bytes)} bytes correct",
+                     f"received {len(received)} bytes")
+    except Exception as e:
+        log_fail("Byte-level TCP->UART", str(e))
+
+    # --- Test 3: Bulk pattern TCP -> UART ---
+    drain()
+    test_pattern = b"WALLABMC_TX_TEST_" + bytes(range(0x20, 0x7f))
+    try:
+        sock.sendall(test_pattern)
+        received = b""
+        def got_tx_data():
+            nonlocal received
+            chunk = rpi_uart.read(rpi_uart.in_waiting or 1)
+            if chunk:
+                received += chunk
+            return test_pattern in received
+
+        if poll_until(got_tx_data, timeout=5):
+            log_pass("TCP -> UART (ESP32 TX -> RPi RX)",
+                     f"sent {len(test_pattern)}B, received {len(received)}B")
+        elif len(received) > 0:
+            log_fail("TCP -> UART partial",
+                     f"sent {len(test_pattern)}B, got {len(received)}B")
+        else:
+            log_fail("TCP -> UART no data received on RPi UART")
+    except Exception as e:
+        log_fail("TCP -> UART", str(e))
+
+    # --- Test 4: Bulk pattern UART -> TCP ---
+    # The console logger ring buffer may contain stale data from prior
+    # tests, so received data can have a prefix before our pattern.
+    # Poll until we see our unique marker substring.
+    test_pattern_2 = b"WALLABMC_RX_TEST_" + bytes(range(0x20, 0x7f))
+    marker = b"WALLABMC_RX_TEST_"
+    try:
+        rpi_uart.write(test_pattern_2)
+        rpi_uart.flush()
+        received = b""
+        def got_rx_data():
+            nonlocal received
+            try:
+                sock.setblocking(False)
+                chunk = sock.recv(4096)
+                sock.setblocking(True)
+                sock.settimeout(3)
+                if chunk:
+                    received += chunk
+            except (BlockingIOError, OSError):
+                sock.setblocking(True)
+                sock.settimeout(3)
+            return marker in received
+
+        if poll_until(got_rx_data, timeout=5):
+            log_pass("UART -> TCP (RPi TX -> ESP32 RX)",
+                     f"sent {len(test_pattern_2)}B, received {len(received)}B")
+        elif len(received) > 0:
+            log_fail("UART -> TCP partial",
+                     f"sent {len(test_pattern_2)}B, got {len(received)}B")
+        else:
+            log_fail("UART -> TCP no data received on TCP socket")
+    except Exception as e:
+        log_fail("UART -> TCP", str(e))
 
     sock.close()
     rpi_uart.close()
