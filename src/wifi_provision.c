@@ -329,41 +329,6 @@ static int start_softap(void)
 	return 0;
 }
 
-/*
- * Perform a WiFi scan and wait for results.  Must be called before
- * starting SoftAP — the ESP32-C3's single radio cannot scan while
- * serving an access point.
- */
-static void do_initial_scan(void)
-{
-	struct net_if *iface = net_if_get_default();
-
-	if (!iface) {
-		return;
-	}
-
-	scan_count = 0;
-	scan_in_progress = true;
-
-	int ret = net_mgmt(NET_REQUEST_WIFI_SCAN, iface, NULL, 0);
-
-	if (ret < 0) {
-		LOG_WRN("WiFi scan request failed: %d", ret);
-		scan_in_progress = false;
-		return;
-	}
-
-	/* Wait for scan to complete (typically 2-3 seconds) */
-	for (int i = 0; i < 50 && scan_in_progress; i++) {
-		k_msleep(100);
-	}
-
-	if (scan_in_progress) {
-		LOG_WRN("WiFi scan timed out");
-		scan_in_progress = false;
-	}
-}
-
 int wifi_provision_init(void)
 {
 	const char *ssid = config_wifi_ssid();
@@ -381,11 +346,6 @@ int wifi_provision_init(void)
 	if (!ssid || strlen(ssid) == 0) {
 		LOG_INF("No WiFi credentials configured, entering provisioning mode");
 		provision_active = true;
-
-		/* Scan for networks before starting SoftAP — the single
-		 * radio cannot scan once the AP is active. */
-		do_initial_scan();
-
 		return start_softap();
 	}
 

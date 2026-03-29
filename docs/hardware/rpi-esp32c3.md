@@ -213,6 +213,39 @@ curl -X POST http://192.168.4.1/api/provision \
     -d '{"ssid":"esp-test","psk":""}'
 ```
 
+## Serial Console
+
+The ESP32-C3 uses a built-in USB-Serial/JTAG interface for its console.
+Unlike a standard UART, **the DTR and RTS signals control the chip's
+reset and boot mode pins**. Most serial terminal tools (picocom, screen,
+minicom, pyserial) toggle DTR when opening the port, which resets the
+chip and may cause it to boot into ESP-IDF download mode instead of
+running the application.
+
+### Recommended: esptool monitor
+
+```bash
+/opt/esptool/bin/esptool --port /dev/ttyESP32C3 monitor
+```
+
+This is the safest way to interact with the console — esptool knows
+how to handle the USB-Serial/JTAG interface without triggering resets.
+
+### Alternative: pyserial with DTR disabled
+
+```python
+import serial
+s = serial.Serial('/dev/ttyESP32C3', 115200, dsrdtr=False, rtscts=False)
+# Do NOT set s.dtr or s.rts — any toggle resets the chip
+```
+
+### Known behaviour after reset
+
+If the chip is reset via DTR toggle (rather than a clean power cycle),
+the ROM bootloader may enter ESP-IDF boot mode instead of Zephyr simple
+boot. This causes a different application to run. To recover, re-flash
+with esptool (which handles the reset sequence correctly).
+
 ## Verification
 
 ```bash
