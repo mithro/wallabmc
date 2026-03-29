@@ -339,8 +339,8 @@ config PERSISTENT_STORAGE
 	select FLASH_MAP
 	# select FLASH_SHELL if SHELL # ~4kB flash
 	# Writing internal flash that is used for XIP requires
-	# that the flash driver is relocated into RAM.
-	select CODE_DATA_RELOCATION_SRAM
+	# that the flash driver is relocated into RAM (STM32 only).
+	select CODE_DATA_RELOCATION_SRAM if SOC_FLASH_STM32
 	# XXX: May need to enable these, or disable IRQs in the flash
 	# erase and program functions while flash is being written.
 	# select SRAM_VECTOR_TABLE
@@ -379,8 +379,7 @@ config APP_CONSOLE_LOGGER
 	bool "Console logger (capture host console uart)"
 	default y
 	select SERIAL
-	select SERIAL_SUPPORT_ASYNC
-	select UART_ASYNC_API
+	select UART_INTERRUPT_DRIVEN
 
 if APP_CONSOLE_LOGGER
 config APP_CONSOLE_LOG_SIZE

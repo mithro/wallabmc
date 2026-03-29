@@ -1,0 +1,135 @@
+/*
+ * SPDX-FileCopyrightText: © 2025-2026 Tenstorrent AI ULC
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include <zephyr/dt-bindings/pinctrl/esp-pinctrl-common.h>
+#include <zephyr/dt-bindings/pinctrl/esp32c3-pinctrl.h>
+#include <zephyr/dt-bindings/pinctrl/esp32c3-gpio-sigmap.h>
+
+// Espressif ESP32-C3 DevKitM
+
+&pinctrl {
+    uart1_default: uart1_default {
+        group1 {
+            pinmux = <UART1_TX_GPIO10>;
+            output-high;
+        };
+        group2 {
+            pinmux = <UART1_RX_GPIO3>;
+            bias-pull-up;
+        };
+    };
+};
+
+/ {
+    chosen {
+        zephyr,entropy = &trng0;
+        zephyr,flash = &flash0;
+        zephyr,code-partition = &slot0_partition;
+        zephyr,console = &usb_serial;
+        zephyr,shell-uart = &usb_serial;
+    };
+
+    /*
+     * GPIO pin assignments are preliminary — adjust based on actual
+     * test rig wiring (see docs/hardware/rpi-esp32c3.md).
+     *
+     * ESP32-C3 available GPIOs: 0-10, 18-21
+     *   GPIO2  = onboard LED (most DevKitM boards)
+     *   GPIO11-17 = flash/PSRAM (unavailable)
+     */
+
+    leds {
+        compatible = "gpio-leds";
+
+        status_led: status_led {
+            gpios = <&gpio0 2 GPIO_ACTIVE_HIGH>;
+        };
+
+        /* Power and reset control — directly drive target GPIOs.
+         * GPIO1  (RPi GPIO20, pin 38) = power control
+         * GPIO0  (RPi GPIO21, pin 40) = reset control
+         *
+         * Note: GPIO0 is a strapping pin on ESP32-C3 (selects boot
+         * mode).  It is safe to drive as output after boot, but the
+         * RPi side (GPIO21) MUST be high-impedance (input, no pull)
+         * during ESP32-C3 power-on/reset to avoid forcing download
+         * mode.  The verify_wallabmc_web.py test reads it as INPUT.
+         */
+        power_out: power_out {
+            gpios = <&gpio0 1 GPIO_ACTIVE_HIGH>;
+        };
+        reset_out: reset_out {
+            gpios = <&gpio0 0 GPIO_ACTIVE_HIGH>;
+        };
+    };
+
+    jtag {
+        compatible = "gpio-leds";
+
+        jtagtck: jtag_tck {
+            gpios = <&gpio0 4 GPIO_ACTIVE_HIGH>;
+        };
+        jtagtms: jtag_tms {
+            gpios = <&gpio0 5 GPIO_ACTIVE_HIGH>;
+        };
+        jtagtdo: jtag_tdo {
+            gpios = <&gpio0 6     GPIO_PULL_UP>;
+        };
+        jtagtdi: jtag_tdi {
+            gpios = <&gpio0 7 GPIO_ACTIVE_HIGH>;
+        };
+    };
+
+    gpio_keys {
+        compatible = "gpio-keys";
+
+        reset_button: button_0 {
+            label = "Reset";
+            gpios = <&gpio0 9 GPIO_ACTIVE_LOW>;
+            zephyr,code = <INPUT_KEY_0>;
+        };
+    };
+
+    aliases {
+        status-led = &status_led;
+
+        /* Power/reset control — directly drive target GPIOs */
+        power-gpio-1 = &power_out;   /* GPIO1 -> RPi GPIO20 */
+        reset-gpio = &reset_out;     /* GPIO0 -> RPi GPIO21 */
+
+        jtagtck = &jtagtck;
+        jtagtms = &jtagtms;
+        jtagtdi = &jtagtdi;
+        jtagtdo = &jtagtdo;
+
+        host-console-uart = &uart1;
+        reset-button = &reset_button;
+    };
+};
+
+&usb_serial {
+    status = "okay";
+};
+
+&uart1 {
+    status = "okay";
+    current-speed = <115200>;
+    pinctrl-0 = <&uart1_default>;
+    pinctrl-names = "default";
+    dmas = <&dma 0>, <&dma 1>;
+    dma-names = "rx", "tx";
+};
+
+&dma {
+    status = "okay";
+};
+
+/*
+ * Flash partitions: use the default Espressif 4MB layout from
+ * partitions_0x0_default_4M.dtsi which provides:
+ *   boot_partition    @ 0x000000  64KB  (mcuboot)
+ *   slot0_partition   @ 0x020000  1792KB (image-0)
+ *   storage_partition @ 0x3b0000  192KB  (NVS)
+ */

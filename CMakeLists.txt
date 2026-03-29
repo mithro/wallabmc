@@ -7,9 +7,12 @@ cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(wallabmc)
 
-if(BOARD STREQUAL "qemu_cortex_m3")
+# ESP32-C3 is here until MCUboot is validated (see sysbuild/mcuboot/boards/
+# esp32c3_devkitm.overlay). Remove from this list to enable sysbuild.
+set(NON_SYSBUILD_BOARDS qemu_cortex_m3 esp32c3_devkitm)
+if(BOARD IN_LIST NON_SYSBUILD_BOARDS)
 	if(SYSBUILD)
-		message(FATAL_ERROR "qemu_cortex_m3 must NOT be built with sysbuild (e.g., no --sysbuild argument)")
+		message(FATAL_ERROR "${BOARD} must NOT be built with sysbuild (e.g., no --sysbuild argument)")
 	endif()
 else()
 	if(NOT SYSBUILD)
@@ -140,12 +143,10 @@ if(CONFIG_APP_CRYPTO)
   endforeach()
 endif()
 
-if(CONFIG_PERSISTENT_STORAGE)
-  if(CONFIG_CODE_DATA_RELOCATION_SRAM AND CONFIG_SOC_FLASH_STM32)
-    include(${ZEPHYR_BASE}/cmake/modules/extensions.cmake)
-    FILE(GLOB flash_driver ${ZEPHYR_BASE}/drivers/flash/flash_stm32*.c)
-    zephyr_code_relocate(FILES ${flash_driver} LOCATION RAM)
-  else()
-    message(FATAL_ERROR "flash storage handling is not defined for this platform")
-  endif()
+if(CONFIG_PERSISTENT_STORAGE AND CONFIG_CODE_DATA_RELOCATION_SRAM AND CONFIG_SOC_FLASH_STM32)
+  # STM32 executes from the same flash it writes (XIP), so the flash
+  # driver must be relocated into RAM to allow safe NVS writes.
+  include(${ZEPHYR_BASE}/cmake/modules/extensions.cmake)
+  FILE(GLOB flash_driver ${ZEPHYR_BASE}/drivers/flash/flash_stm32*.c)
+  zephyr_code_relocate(FILES ${flash_driver} LOCATION RAM)
 endif()
