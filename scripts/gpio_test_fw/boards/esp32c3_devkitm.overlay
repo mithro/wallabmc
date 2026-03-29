@@ -1,0 +1,16 @@
+/*
+ * SPDX-FileCopyrightText: © 2025-2026 Tenstorrent AI ULC
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/* Route console to USB-Serial/JTAG so shell works over USB */
+/ {
+    chosen {
+        zephyr,console = &usb_serial;
+        zephyr,shell-uart = &usb_serial;
+    };
+};
+
+&usb_serial {
+    status = "okay";
+};
