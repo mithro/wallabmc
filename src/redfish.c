@@ -230,7 +230,7 @@ static int redfish_handler(struct http_client_ctx *client,
 	}
 
 	if (client->method == HTTP_PATCH || client->method == HTTP_POST) {
-		/* Accumulate requests into the in_buffer, until the final request. */
+		/* Accumulate request body into in_buffer across chunks. */
 		if (request_ctx->data && request_ctx->data_len > 0) {
 			if (in_buffer_len + request_ctx->data_len < sizeof(in_buffer)) {
 				memcpy(in_buffer + in_buffer_len, request_ctx->data, request_ctx->data_len);
@@ -306,7 +306,10 @@ static int name##_handler(struct http_client_ctx *client,				\
 static const struct http_resource_detail_dynamic name##_detail = {			\
 	.common = {									\
 		.type = HTTP_RESOURCE_TYPE_DYNAMIC,					\
-		.bitmask_of_supported_http_methods = -1U,				\
+		.bitmask_of_supported_http_methods =					\
+			((get_handler) ? BIT(HTTP_GET) : 0) |				\
+			((patch_handler) ? BIT(HTTP_PATCH) : 0) |			\
+			((post_handler) ? BIT(HTTP_POST) : 0),				\
 	},										\
 	.cb = name##_handler,								\
 	.user_data = NULL,								\
@@ -1328,16 +1331,52 @@ static const struct json_obj_descr reset_descr[] = {
 				  reset_type, JSON_TOK_STRING)
 };
 
+/*
+ * Find the start of the last JSON object in buf.
+ *
+ * The Zephyr HTTP server can prepend stale data from a prior request
+ * to the current request's body (shared static buffer + keepalive).
+ * The actual payload is always the LAST complete {...} in the buffer.
+ *
+ * Limitation: finds the last '{', not the last top-level object.
+ * This works for all current Redfish POST payloads (flat, single-level
+ * JSON objects with no nested braces).  If a payload with nested
+ * objects is added, this must be replaced with a proper brace-matching
+ * scanner.
+ */
+static char *find_last_json_object(char *buf, size_t len)
+{
+	char *last = NULL;
+
+	for (size_t i = 0; i < len; i++) {
+		if (buf[i] == '{')
+			last = &buf[i];
+	}
+	return last;
+}
+
 /* POST /redfish/v1/Systems/system/Actions/ComputerSystem.Reset */
 static int system_reset_post_handler(char *in_buf, size_t in_buf_len)
 {
 	struct redfish_reset_payload payload;
 	int ret;
+	char *json_start;
+
+	/* Skip any stale data prepended by the HTTP framework */
+	json_start = find_last_json_object(in_buf, in_buf_len);
+	if (!json_start) {
+		LOG_ERR("ComputerSystem.Reset: No JSON object in buffer "
+			"(len=%zu)", in_buf_len);
+		return HTTP_400_BAD_REQUEST;
+	}
 
 	memset(&payload, 0, sizeof(payload));
-	ret = json_obj_parse(in_buf, in_buf_len, reset_descr, ARRAY_SIZE(reset_descr), &payload);
-	if (ret < 0) {
-		LOG_ERR("ComputerSystem.Reset: Bad JSON (err=%d)", ret);
+	ret = json_obj_parse(json_start,
+			     in_buf_len - (json_start - in_buf),
+			     reset_descr, ARRAY_SIZE(reset_descr), &payload);
+	if (ret <= 0 || !payload.reset_type) {
+		LOG_ERR("ComputerSystem.Reset: Bad JSON (ret=%d, buf='%s')",
+			ret, json_start);
 		return HTTP_400_BAD_REQUEST;
 	}
 
