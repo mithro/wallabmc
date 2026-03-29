@@ -71,7 +71,7 @@ static int power_off(void)
 	return 0;
 }
 
-void power_set_state(bool on)
+int power_set_state(bool on)
 {
 	int ret;
 
@@ -82,10 +82,11 @@ void power_set_state(bool on)
 
 	if (ret < 0) {
 		LOG_ERR("Failed to set power state: %d", ret);
-		return;
+		return ret;
 	}
 
 	LOG_INF("System Power State changed to: %s", power_get_state() ? "ON" : "OFF");
+	return 0;
 }
 
 int power_init(void)
@@ -155,15 +156,9 @@ int reset_init(void)
 		return -1;
 	}
 
-	ret = gpio_pin_configure_dt(&gpio_reset, GPIO_OUTPUT_ACTIVE);
+	ret = gpio_pin_configure_dt(&gpio_reset, GPIO_OUTPUT_INACTIVE);
 	if (ret < 0) {
 		LOG_INF("Could not configure reset GPIO\n");
-		return -1;
-	}
-
-	ret = gpio_pin_set_dt(&gpio_reset, 0);
-	if (ret < 0) {
-		LOG_INF("Could not toggle reset GPIO\n");
 		return -1;
 	}
 
