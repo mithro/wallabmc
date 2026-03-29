@@ -19,6 +19,8 @@ LOG_MODULE_REGISTER(wallabmc, LOG_LEVEL_INF);
 #include "http.h"
 #include "power.h"
 #include "rtc.h"
+#include "wifi.h"
+#include "wifi_provision.h"
 #include "jtag.h"
 #include "console_logger.h"
 #include "console_bridge.h"
@@ -220,6 +222,18 @@ int main(void)
 	if (button_init() < 0) {
 		LOG_ERR("Button init failed");
 		/* Continue */
+	}
+
+	LOG_DBG("WiFi init");
+	if (wifi_init() < 0) {
+		LOG_ERR("WiFi init failed");
+		/* Continue - WiFi is optional */
+	}
+
+	LOG_DBG("WiFi provisioning init");
+	if (wifi_provision_init() < 0) {
+		LOG_ERR("WiFi provisioning init failed");
+		/* Continue - provisioning is optional */
 	}
 
 	LOG_DBG("Network init");
