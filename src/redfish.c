@@ -86,7 +86,8 @@ static int validate_auth(struct http_client_ctx *client)
 	decoded_buf[decoded_len] = '\0';
 
 	uint8_t expected[CREDENTIALS_MAX_LEN];
-	snprintf(expected, sizeof(expected), "%s:%s", "admin", config_bmc_admin_password());
+	snprintf((char *)expected, sizeof(expected), "%s:%s",
+		 "admin", config_bmc_admin_password());
 
 	if (strcmp((char *)decoded_buf, expected) == 0)
 		return 0; // Success!
@@ -129,10 +130,23 @@ static int validate_and_set_headers(struct http_client_ctx *client,
 		return -1;
 	}
 
+	/*
+	 * Force Connection: close on every response.  The static
+	 * in_buffer is shared across connections — keeping a connection
+	 * alive can bleed data from the next request into the current
+	 * handler's buffer, corrupting JSON payloads.
+	 */
 	if (client->method == HTTP_GET) {
 		static const struct http_header headers[] = {
 			{ .name = "content-type", .value = "application/json" },
 			{ .name = "cache-control", .value = "no-cache" },
+			{ .name = "connection", .value = "close" },
+		};
+		ctx->headers = headers;
+		ctx->header_count = ARRAY_SIZE(headers);
+	} else {
+		static const struct http_header headers[] = {
+			{ .name = "connection", .value = "close" },
 		};
 		ctx->headers = headers;
 		ctx->header_count = ARRAY_SIZE(headers);
