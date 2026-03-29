@@ -100,6 +100,10 @@ target_sources_ifdef(CONFIG_APP_WIFI app PRIVATE
 	src/wifi.c
 )
 
+target_sources_ifdef(CONFIG_APP_WIFI_PROVISION app PRIVATE
+	src/wifi_provision.c
+)
+
 target_sources_ifdef(CONFIG_PERSISTENT_STORAGE app PRIVATE
 	src/button.c
 	src/fs.c
@@ -133,6 +137,14 @@ if(CONFIG_APP_WEB)
       --gzip
     )
   endforeach()
+endif()
+
+if(CONFIG_APP_WIFI_PROVISION)
+  generate_inc_file_for_target(app
+    static_web_resources/provision.html
+    ${gen_dir}/provision.html.gz.inc
+    --gzip
+  )
 endif()
 
 if(CONFIG_APP_CRYPTO)
