@@ -209,7 +209,12 @@ HTTP_RESOURCE_DEFINE(provision_api_resource, http_service, "/api/provision",
 		     &provision_api_detail);
 
 /*
- * GET /api/provision/scan — return scan results as JSON
+ * GET /api/provision/scan — return cached scan results as JSON
+ *
+ * The ESP32-C3 has a single radio — scanning while the SoftAP is active
+ * would disconnect all clients, preventing the HTTP response from being
+ * delivered.  Instead, we scan once during init (before the SoftAP starts)
+ * and return the cached results here.
  */
 static uint8_t scan_response_buf[1024];
 
@@ -220,19 +225,7 @@ static int provision_scan_handler(struct http_client_ctx *client,
 				  void *user_data)
 {
 	if (status == HTTP_SERVER_REQUEST_DATA_FINAL) {
-		/* Trigger a new scan if not already running */
-		if (!scan_in_progress) {
-			struct net_if *iface = net_if_get_default();
-
-			scan_count = 0;
-			scan_in_progress = true;
-			net_mgmt(NET_REQUEST_WIFI_SCAN, iface, NULL, 0);
-
-			/* Wait briefly for results (best effort) */
-			k_msleep(3000);
-		}
-
-		/* Build JSON response */
+		/* Build JSON response from cached scan results */
 		int off = snprintf((char *)scan_response_buf,
 				   sizeof(scan_response_buf),
 				   "{\"networks\":[");
@@ -336,6 +329,41 @@ static int start_softap(void)
 	return 0;
 }
 
+/*
+ * Perform a WiFi scan and wait for results.  Must be called before
+ * starting SoftAP — the ESP32-C3's single radio cannot scan while
+ * serving an access point.
+ */
+static void do_initial_scan(void)
+{
+	struct net_if *iface = net_if_get_default();
+
+	if (!iface) {
+		return;
+	}
+
+	scan_count = 0;
+	scan_in_progress = true;
+
+	int ret = net_mgmt(NET_REQUEST_WIFI_SCAN, iface, NULL, 0);
+
+	if (ret < 0) {
+		LOG_WRN("WiFi scan request failed: %d", ret);
+		scan_in_progress = false;
+		return;
+	}
+
+	/* Wait for scan to complete (typically 2-3 seconds) */
+	for (int i = 0; i < 50 && scan_in_progress; i++) {
+		k_msleep(100);
+	}
+
+	if (scan_in_progress) {
+		LOG_WRN("WiFi scan timed out");
+		scan_in_progress = false;
+	}
+}
+
 int wifi_provision_init(void)
 {
 	const char *ssid = config_wifi_ssid();
@@ -353,6 +381,11 @@ int wifi_provision_init(void)
 	if (!ssid || strlen(ssid) == 0) {
 		LOG_INF("No WiFi credentials configured, entering provisioning mode");
 		provision_active = true;
+
+		/* Scan for networks before starting SoftAP — the single
+		 * radio cannot scan once the AP is active. */
+		do_initial_scan();
+
 		return start_softap();
 	}
 
