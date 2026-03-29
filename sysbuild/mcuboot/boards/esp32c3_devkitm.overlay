@@ -1,0 +1,23 @@
+/*
+ * SPDX-FileCopyrightText: © 2025-2026 Tenstorrent AI ULC
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include "../../../boards/esp32c3_devkitm.overlay"
+
+/*
+ * This comes from zephyr/bootloader/mcuboot/boot/zephyr/app.overlay
+ * Otherwise mcuboot builds using the slot0_partition which is where
+ * wallabmc lives.
+ *
+ * NOTE: Espressif MCUboot uses a different bootloader chain than
+ * STM32/SiFive. The ESP32-C3 ROM bootloader loads MCUboot as the
+ * second-stage bootloader. This overlay may need additional
+ * Espressif-specific nodes — investigation required before enabling
+ * sysbuild for this target.
+ */
+/ {
+    chosen {
+        zephyr,code-partition = &boot_partition;
+    };
+};
